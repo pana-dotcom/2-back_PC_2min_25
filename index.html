@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>2-back Task</title>
+
+<style>
+body {
+    font-family: Arial;
+    text-align: center;
+    margin-top: 50px;
+}
+
+#letter {
+    font-size: 80px;
+    height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 30px;
+    line-height: 1;
+    width: 120px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.fixation {
+    color: white;
+    background: gray;
+    border-radius: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>2-back</h2>
+
+<button id="startBtn">スタート</button>
+
+<div id="game" style="display:none;">
+    <div id="letter">✖</div>
+
+    <p>2つ前の文字と一致時はEnterキーを押す</p>
+</div>
+
+<script>
+
+let sequence = [];
+let index = 0;
+let logs = [];
+let responded = false;
+
+let baseLetters = ["B","F","K","H","M","Q","R","T"];
+
+let timeLimit = 570;
+let timeLeft = timeLimit;
+let gameTimer;
+
+let isRunning = false;
+
+let keyLocked = false;
+
+let letterDuration = 500;
+let fixationDuration = 2000;
+
+const startBtn = document.getElementById("startBtn");
+const game = document.getElementById("game");
+const letterDiv = document.getElementById("letter");
+
+startBtn.addEventListener("click", () => {
+    startBtn.style.display = "none";
+    game.style.display = "block";
+    startGame();
+});
+
+function showFixation() {
+    letterDiv.innerText = "✖";
+    letterDiv.classList.add("fixation");
+}
+
+function showStimulus(letter) {
+    letterDiv.innerText = letter;
+    letterDiv.classList.remove("fixation");
+}
+
+function startGame() {
+
+    isRunning = true;
+
+    sequence = [];
+    index = 0;
+    logs = [];
+
+    timeLeft = timeLimit;
+
+    gameTimer = setInterval(countDown, 1000);
+
+    showFixation();
+
+    setTimeout(() => {
+        if (!isRunning) return;
+        nextTrial();
+    }, fixationDuration);
+}
+
+function countDown() {
+
+    timeLeft--;
+
+    if (timeLeft <= 0) {
+        endGame();
+    }
+}
+
+function nextTrial() {
+
+    if (!isRunning) return;
+
+    responded = false;
+
+    let base;
+    let letter;
+
+    /*
+    最初の2試行は2-back判定ができないため、
+    8文字からランダムに選択
+    */
+    if (sequence.length < 2) {
+
+        base =
+            baseLetters[
+                Math.floor(Math.random() * baseLetters.length)
+            ];
+
+    } else {
+
+        /*
+        3試行目以降は、各試行で独立に
+        25%の確率でターゲットを設定
+        */
+        let makeTarget = Math.random() < 0.25;
+
+        /*
+        2試行前の文字を取得
+        大文字・小文字は区別しない
+        */
+        let back2 =
+            sequence[sequence.length - 2].toUpperCase();
+
+        if (makeTarget) {
+
+            /*
+            ターゲットの場合は、
+            2試行前と同じ文字を提示
+            */
+            base = back2;
+
+        } else {
+
+            /*
+            非ターゲットの場合は、
+            2試行前と同じ文字を候補から除外
+            */
+            let candidates =
+                baseLetters.filter(item => item !== back2);
+
+            base =
+                candidates[
+                    Math.floor(Math.random() * candidates.length)
+                ];
+        }
+    }
+
+    /*
+    大文字または小文字をランダムに決定
+    */
+    letter =
+        Math.random() < 0.5 ? base.toLowerCase() : base;
+
+    sequence.push(letter);
+
+    showStimulus(letter);
+
+    index++;
+
+    setTimeout(() => {
+
+        if (!isRunning) return;
+
+        showFixation();
+
+        setTimeout(() => {
+
+            if (!isRunning) return;
+
+            if (!responded) {
+                evaluate(false);
+            }
+
+            nextTrial();
+
+        }, fixationDuration);
+
+    }, letterDuration);
+}
+
+document.addEventListener("keydown", (e) => {
+
+    if (e.key !== "Enter") return;
+    if (keyLocked) return;
+
+    keyLocked = true;
+
+    response();
+});
+
+document.addEventListener("keyup", (e) => {
+
+    if (e.key === "Enter") {
+        keyLocked = false;
+    }
+});
+
+function response() {
+
+    if (!isRunning) return;
+    if (responded) return;
+
+    responded = true;
+
+    evaluate(true);
+}
+
+function evaluate(clicked) {
+
+    if (index < 3) return;
+
+    let current = sequence[index - 1];
+    let back2 = sequence[index - 3];
+
+    let match =
+        current.toLowerCase() === back2.toLowerCase();
+
+    let hit = 0;
+    let miss = 0;
+    let fa = 0;
+    let cr = 0;
+
+    if (match && clicked) {
+        hit = 1;
+    }
+    else if (match && !clicked) {
+        miss = 1;
+    }
+    else if (!match && clicked) {
+        fa = 1;
+    }
+    else if (!match && !clicked) {
+        cr = 1;
+    }
+
+    logs.push([
+        logs.length + 1,
+        hit,
+        miss,
+        fa,
+        cr
+    ]);
+}
+
+function endGame() {
+
+    isRunning = false;
+
+    clearInterval(gameTimer);
+
+    letterDiv.innerText = "終了";
+    letterDiv.classList.remove("fixation");
+
+    exportCSV();
+}
+
+function exportCSV() {
+
+    let csv =
+        "trial,Hit,Miss,FalseAlarm,CorrectRejection\n";
+
+    logs.forEach(row => {
+        csv += row.join(",") + "\n";
+    });
+
+    let blob =
+        new Blob([csv], { type: "text/csv" });
+
+    let link =
+        document.createElement("a");
+
+    let now = new Date();
+
+    let YYYY = now.getFullYear();
+    let MM = String(now.getMonth() + 1).padStart(2,"0");
+    let DD = String(now.getDate()).padStart(2,"0");
+    let hh = String(now.getHours()).padStart(2,"0");
+    let mm = String(now.getMinutes()).padStart(2,"0");
+
+    let filename =
+        `n-back_${YYYY}${MM}${DD}_${hh}${mm}.csv`;
+
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+}
+
+</script>
+
+</body>
+</html>
